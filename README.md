@@ -1,13 +1,13 @@
 # Battlegrounds Historian
 
-**WoW TBC classic addon for battlegrounds history and statistics**
+**WoW classic (SOD) addon for battlegrounds history and statistics**
 
-Working TBC Fork of [ZergRael's BGHistorian](https://github.com/ZergRael/BGHistorian) updated for TBC Classic.
+Working TBC Fork of [ZergRael's BGHistorian](https://github.com/ZergRael/BGHistorian) updated to work for classic SoD and onwards.
 
 BG Historian tries to record every battleground joined and compiles statistics.
 Heavily inspired by [Reflex](https://curseforge.com/wow/addons/reflex-battleground-historian), which has been confirmed to focus only on retail version.
 
-Responds a minimap button.
+Responds to a minimap button.
 
 ## Features
 

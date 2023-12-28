@@ -3,6 +3,7 @@ local addonTitle = select(2, _G.GetAddOnInfo(addonName))
 local BGH = _G.LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
 local L = _G.LibStub("AceLocale-3.0"):GetLocale(addonName, true)
 local libDBIcon = _G.LibStub("LibDBIcon-1.0")
+local playerGUID = UnitGUID("player")
 
 function BGH:OnInitialize()
     self.db = _G.LibStub("AceDB-3.0"):New(addonName, {
@@ -19,8 +20,6 @@ function BGH:OnInitialize()
     -- BGH:Print("OnInitialize")
 
     self:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
-    self:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
-    self:RegisterEvent("CHAT_MSG_COMBAT_HONOR_GAIN")
 
     self:DrawMinimapIcon()
     self:RegisterOptionsTable()
@@ -33,6 +32,34 @@ function BGH:OnInitialize()
         battleFieldIndex = nil,
         stats = {},
     }
+end
+
+function BGH:COMBAT_LOG_EVENT_UNFILTERED(event)
+    -- Only attempt to record dmg or healing if we have initialized stats
+    if not self.current["stats"]["damageDone"] or not self.current["stats"]["healingDone"] then
+        return
+    end
+    local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, swingAm, swingOK, _, spellAm, spellOK  = CombatLogGetCurrentEventInfo()
+    petGUID = UnitGUID("pet")
+    if sourceGUID == playerGUID or sourceGUID == petGUID then
+        local dmg = 0
+        local heal = 0
+        if subevent:startswith("SWING") and subevent:endswith("DAMAGE") then
+            dmg = swingAm + swingOK
+        elseif (subevent:startswith("RANGE") or subevent:startswith("SPELL")) and subevent:endswith("DAMAGE") then
+            dmg = spellAm + spellOK
+        elseif subevent:startswith("SPELL") and subevent:endswith("HEAL") then
+            heal = spellAm + spellOK
+        end
+        if dmg > 0 then
+            self.current["stats"]["damageDone"] = self.current["stats"]["damageDone"] + dmg
+        end
+        
+        if heal > 0 then
+            self.current["stats"]["healingDone"] = self.current["stats"]["healingDone"] + heal
+        end
+    end
+    
 end
 
 -- Wowpedia: Fired whenever joining a queue, leaving a queue, battlefield to join is changed, when you can join a battlefield, or if somebody wins the battleground.
@@ -55,7 +82,13 @@ function BGH:UPDATE_BATTLEFIELD_STATUS(eventName, battleFieldIndex)
         self.current["battleFieldIndex"] = battleFieldIndex
         self.current["stats"]["startTime"] = _G.time()
         self.current["stats"]["honorGained"] = 0
-        self.current["stats"]["mapId"] = self:MapId(mapName)
+        self.current["stats"]["damageDone"] = 0
+        self.current["stats"]["healingDone"] = 0
+        self.current["stats"]["mapId"] = self:MapId(mapName)        
+        self:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
+        self:RegisterEvent("CHAT_MSG_COMBAT_HONOR_GAIN")
+        self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+        self.Print("BGHistorian tracking started.")
     elseif self.current["battleFieldIndex"] == battleFieldIndex and self.current["status"] == "active" and status == "none" then
         self.current["status"] = status
     end
@@ -71,6 +104,10 @@ function BGH:UPDATE_BATTLEFIELD_SCORE(eventName)
     end
 
     self.battlegroundEnded = true
+    self:UnregisterEvent("UPDATE_BATTLEFIELD_SCORE")
+    self:UnregisterEvent("CHAT_MSG_COMBAT_HONOR_GAIN")
+    self:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    self.Print("BGHistorian tracking ended.")
     self:RecordBattleground()
 end
 
@@ -78,6 +115,10 @@ end
 -- You have been awarded X honor points.
 -- <Name> dies, honorable kill Rank: <rank> (X Honor Points)
 function BGH:CHAT_MSG_COMBAT_HONOR_GAIN(_, chatMessage)
+    -- Only attempt to record honor if we have initialized stats
+    if not self.current["stats"]["honorGained"] then
+        return
+    end
     local honor = self:ExtractHonorFromMessage(chatMessage)
     if honor == 0 then
         return
@@ -88,16 +129,12 @@ function BGH:CHAT_MSG_COMBAT_HONOR_GAIN(_, chatMessage)
             return
         end
     end
-    -- Only attempt to record honor if we have initialized stats
-    if not self.current["stats"]["honorGained"] then
-        return
-    end
     self.current["stats"]["honorGained"] = self.current["stats"]["honorGained"] + honor
 end
 
 function BGH:ExtractHonorFromMessage(message)
     for token in string.gmatch(message, "[^%s]+") do
-        local strToParse = token:gsub('%(', '')
+        local strToParse = token:gsub('%(', ''):gsub('%)', '')
         local honor = tonumber(strToParse)
         if not (honor == nil) then
             return honor
@@ -139,14 +176,14 @@ function BGH:RecordBattleground()
     local numScores = _G.GetNumBattlefieldScores()
     local playerScore
     for i=1, numScores do
-        name, killingBlows, honorableKills, deaths, _, _, _, _, _, _, damageDone, healingDone = _G.GetBattlefieldScore(i)
+        name, killingBlows, honorableKills, deaths = _G.GetBattlefieldScore(i)
         if name == UnitName("player") then
             playerScore = {
                 ["killingBlows"] = killingBlows,
                 ["honorableKills"] = honorableKills,
                 ["deaths"] = deaths,
-                ["damageDone"] = damageDone,
-                ["healingDone"] = healingDone,
+                ["damageDone"] = self.current["stats"]["damageDone"],
+                ["healingDone"] = self.current["stats"]["healingDone"],
             }
         end
     end
@@ -222,7 +259,7 @@ function BGH:DrawMinimapIcon()
             end
         end,
         OnTooltipShow = function(tooltip)
-            tooltip:AddLine(string.format("%s |cff777777v%s|r", addonTitle, "0.7.6"))
+            tooltip:AddLine(string.format("%s |cff777777v%s|r", addonTitle, "1.0.0"))
             tooltip:AddLine(string.format("|cFFCFCFCF%s|r %s", L["Left Click"], L["to open the main window"]))
             tooltip:AddLine(string.format("|cFFCFCFCF%s|r %s", L["Right Click"], L["to open options"]))
             tooltip:AddLine(string.format("|cFFCFCFCF%s|r %s", L["Drag"], L["to move this button"]))
@@ -513,4 +550,12 @@ function BGH:OptimizeDatabase()
     end
     self.db.char.history = newHistory
     self:Print(L["Database optimized"])
+end
+
+function string:endswith(ending)
+    return ending == "" or self:sub(-#ending) == ending
+end
+
+function string:startswith(start)
+    return self:sub(1, #start) == start
 end
