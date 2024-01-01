@@ -39,9 +39,9 @@ function BGH:COMBAT_LOG_EVENT_UNFILTERED(event)
     if not self.current["stats"]["damageDone"] or not self.current["stats"]["healingDone"] then
         return
     end
-    local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, swingAm, swingOK, _, spellAm, spellOK  = CombatLogGetCurrentEventInfo()
+    local _, subevent, _, sourceGUID, _, _, _, absorbGUID, _, _, _, swingAm, swingOK, _, spellAm, spellOK, _, _, _, _, _, absorbAm  = CombatLogGetCurrentEventInfo()
     petGUID = UnitGUID("pet")
-    if sourceGUID == playerGUID or sourceGUID == petGUID then
+    if sourceGUID == playerGUID or sourceGUID == petGUID or absorbGUID == playerGUID then
         local dmg = 0
         local heal = 0
         if subevent:startswith("SWING") and subevent:endswith("DAMAGE") then
@@ -50,6 +50,10 @@ function BGH:COMBAT_LOG_EVENT_UNFILTERED(event)
             dmg = spellAm + spellOK
         elseif subevent:startswith("SPELL") and subevent:endswith("HEAL") then
             heal = spellAm + spellOK
+        elseif subevent == "SPELL_ABSORBED" then
+            if absorbAm ~= nil then
+                heal = absorbAm
+            end
         end
         if dmg > 0 then
             self.current["stats"]["damageDone"] = self.current["stats"]["damageDone"] + dmg
@@ -59,7 +63,6 @@ function BGH:COMBAT_LOG_EVENT_UNFILTERED(event)
             self.current["stats"]["healingDone"] = self.current["stats"]["healingDone"] + heal
         end
     end
-    
 end
 
 -- Wowpedia: Fired whenever joining a queue, leaving a queue, battlefield to join is changed, when you can join a battlefield, or if somebody wins the battleground.
@@ -88,7 +91,6 @@ function BGH:UPDATE_BATTLEFIELD_STATUS(eventName, battleFieldIndex)
         self:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
         self:RegisterEvent("CHAT_MSG_COMBAT_HONOR_GAIN")
         self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-        self.Print("BGHistorian tracking started.")
     elseif self.current["battleFieldIndex"] == battleFieldIndex and self.current["status"] == "active" and status == "none" then
         self.current["status"] = status
     end
@@ -107,7 +109,6 @@ function BGH:UPDATE_BATTLEFIELD_SCORE(eventName)
     self:UnregisterEvent("UPDATE_BATTLEFIELD_SCORE")
     self:UnregisterEvent("CHAT_MSG_COMBAT_HONOR_GAIN")
     self:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    self.Print("BGHistorian tracking ended.")
     self:RecordBattleground()
 end
 
