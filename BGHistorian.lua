@@ -26,6 +26,7 @@ function BGH:OnInitialize()
 
     self.battlegroundEnded = false
     self.sortColumn = "endTime"
+    self.lastPetGUID = ""
     self.sortOrder = true
     self.current = {
         status = "none",
@@ -39,20 +40,27 @@ function BGH:COMBAT_LOG_EVENT_UNFILTERED(event)
     if not self.current["stats"]["damageDone"] or not self.current["stats"]["healingDone"] then
         return
     end
-    local _, subevent, _, sourceGUID, _, _, _, absorbGUID, _, _, _, swingAm, swingOK, _, spellAm, spellOK, _, _, _, _, _, absorbAm  = CombatLogGetCurrentEventInfo()
+    local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, swingAmOrSwingAbsorbGUID, swingOK, _, spellAmOrSpellAbsordGUID, spellOK, _, _, meleeAbsorbAm, _, _, spellAbsorbAm  = CombatLogGetCurrentEventInfo()
     petGUID = UnitGUID("pet")
-    if sourceGUID == playerGUID or sourceGUID == petGUID or absorbGUID == playerGUID then
+    if petGUID == nil then
+        petGUID = self.lastPetGUID
+    else
+        self.lastPetGUID = petGUID
+    end
+    if sourceGUID == playerGUID or sourceGUID == petGUID or swingAmOrSwingAbsorbGUID == playerGUID or swingAmOrSwingAbsorbGUID == petGUID or spellAmOrSpellAbsordGUID == playerGUID or spellAmOrSpellAbsordGUID == petGUID then
         local dmg = 0
         local heal = 0
         if subevent:startswith("SWING") and subevent:endswith("DAMAGE") then
-            dmg = swingAm + swingOK
+            dmg = swingAmOrSwingAbsorbGUID + swingOK
         elseif (subevent:startswith("RANGE") or subevent:startswith("SPELL")) and subevent:endswith("DAMAGE") then
-            dmg = spellAm + spellOK
+            dmg = spellAmOrSpellAbsordGUID + spellOK
         elseif subevent:startswith("SPELL") and subevent:endswith("HEAL") then
-            heal = spellAm + spellOK
+            heal = spellAmOrSpellAbsordGUID + spellOK
         elseif subevent == "SPELL_ABSORBED" then
-            if absorbAm ~= nil then
-                heal = absorbAm
+            if spellAbsorbAm ~= nil then
+                heal = spellAbsorbAm
+            elseif meleeAbsorbAm ~= nil then
+                heal = meleeAbsorbAm
             end
         end
         if dmg > 0 then
